@@ -10,9 +10,15 @@ Thumbs.db
 .env.*
 !.env.example
 
+# Python
+__pycache__/
+*.pyc
+
 # Generated smoke images (if any land in the skill tree)
 *.jpg
 *.jpeg
 *.png
 *.webp
+*.mp4
 images/
+videos/

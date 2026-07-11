@@ -6,6 +6,7 @@ Agent skill: generate images via an **OpenAI-compatible mid-relay**
 
 - Default image model: `grok-imagine-image`
 - Soft gate: intended for **Grok-family / mid-relay** chat sessions; skip for Composer / non-Grok
+- After generate: agent **must** `read_file` the image + reply with a short relative link (`images/foo.jpg`) for in-session preview
 - No API keys in the repo — reads `GROK_API_KEY` (and optional `GROK_IMAGEN_*`) from the environment
 
 ## Layout

@@ -1,28 +1,30 @@
 ---
 name: proxy-imagine
 description: >
-  Proxy media for Grok mid-relay sessions: text-to-image (/images/generations) and
-  text/image-to-video (/videos/generations async poll). Defaults: grok-imagine-image /
-  grok-imagine-video. After success: -Open, HTTPS url in reply, local relative path.
-  Use when Grok-family mid-relay chat needs generate/draw image, video, 出图/画图/生成视频/短视频;
-  official image_gen/image_to_video API key errors; /proxy-imagine.
+  Proxy media for Grok mid-relay sessions: text-to-image (/images/generations),
+  image edit (/images/edits JSON), and text/image-to-video (/videos/generations async poll).
+  Defaults: grok-imagine-image / grok-imagine-image-quality / grok-imagine-video.
+  After success: -Open, HTTPS url in reply, local relative path.
+  Use when Grok-family mid-relay chat needs generate/draw/edit image, video, 出图/画图/改图/编辑图片/生成视频;
+  official image_gen/image_edit/image_to_video API key errors; /proxy-imagine.
   Do NOT use for Composer/non-Grok — use built-in tools there.
 when-to-use: >
-  Grok mid-relay session; user wants image or short video; official Imagine tools fail
+  Grok mid-relay session; user wants image, edit, or short video; official Imagine tools fail
   with incorrect API key; /proxy-imagine. Skip composer and non-Grok models.
 ---
 
-# Proxy Imagine (image + video)
+# Proxy Imagine (image + edit + video)
 
-Generate **images and videos** through the user's mid-relay API — not Grok's built-in
-`image_gen` / `image_to_video` (those hit official xAI and need `XAI_API_KEY`).
+Generate and **edit images**, and generate **videos**, through the user's mid-relay API —
+not Grok's built-in `image_gen` / `image_edit` / `image_to_video` (those hit official xAI
+and need `XAI_API_KEY`).
 
 ## Session gate (soft)
 
 **Use when BOTH are true:**
 
 1. Chat model is Grok-family / mid-relay (`custom-grok`, `grok-4.5`, `grok-build*`, …).
-2. User wants an **image** or **video**, or ran `/proxy-imagine`.
+2. User wants an **image**, **image edit**, or **video**, or ran `/proxy-imagine`.
 
 **Skip** for Composer / non-Grok → built-in tools.
 
@@ -76,7 +78,81 @@ Env: `GROK_API_KEY`, optional `GROK_IMAGEN_BASE_URL`, `GROK_IMAGEN_MODEL`, `GROK
 
 ---
 
-## B) Video generation
+## B) Image edit
+
+**Script:** `scripts/gen-edit.ps1` / `gen-edit.py`  
+**API:** `POST {base}/v1/images/edits` with **JSON** body (not OpenAI multipart form-data)
+
+```json
+{
+  "model": "grok-imagine-image-quality",
+  "prompt": "Render this as a pencil sketch with detailed shading",
+  "image": { "url": "<https or data: URI>", "type": "image_url" }
+}
+```
+
+**Default model:** `grok-imagine-image-quality`  
+(Relays may also accept `grok-imagine-image` / `grok-imagine-edit` — override with `GROK_EDIT_MODEL`.)
+
+**Source image:** local path (auto base64 `data:` URI) and/or public HTTPS URL.
+
+### Local file
+
+```powershell
+& "$skillRoot\scripts\gen-edit.ps1" `
+  -Prompt "pencil sketch with detailed shading" `
+  -ImagePath "images/sunset-cat.jpg" `
+  -OutDir "images" `
+  -Name "sunset-cat-sketch" `
+  -Open -Json
+```
+
+### Public URL
+
+```powershell
+& "$skillRoot\scripts\gen-edit.ps1" `
+  -Prompt "make it a rainy night scene" `
+  -ImageUrl "https://imgen.x.ai/..." `
+  -Name "cat-rain" -Open -Json
+```
+
+Python:
+
+```bash
+python "$SKILL_ROOT/scripts/gen-edit.py" "pencil sketch with detailed shading" \
+  --image-path images/sunset-cat.jpg --out-dir images --name sunset-cat-sketch --open --json
+```
+
+Env:
+
+| Variable | Purpose |
+|----------|---------|
+| `GROK_API_KEY` | Auth (shared) |
+| `GROK_EDIT_BASE_URL` | Override host (else same as image base) |
+| `GROK_EDIT_MODEL` | Default `grok-imagine-image-quality` |
+| `GROK_EDIT_OUT_DIR` | Default `./images` |
+| `GROK_EDIT_API_KEY` | Optional separate key |
+
+**Edit prompt craft:** describe the **change** (style, object add/remove, lighting).  
+Single-image edit usually keeps the source aspect ratio; optional `-AspectRatio` only if user asks.
+
+**After edit:**
+
+1. `read_file` result (optional).
+2. Reply with HTTPS URL + `` `images/<name>.jpg` ``.
+3. Do **not** call built-in `image_edit` on mid-relay (API key fails).
+
+**Failures:**
+
+| Symptom | Action |
+|---------|--------|
+| 404 / route missing | Relay may not proxy edits yet; report endpoint |
+| 422 body | Ensure JSON `image.url` + `type: image_url` (scripts do this) |
+| Model not found | Try `-Model grok-imagine-image` or check relay catalog |
+
+---
+
+## C) Video generation
 
 **Script:** `scripts/gen-video.ps1` / `gen-video.py`  
 **API:**
@@ -166,14 +242,16 @@ If animating a still, describe **only** motion/camera, keep subject fixed.
 ## Hard rules
 
 1. Mid-relay Grok only for this skill.
-2. Image → `gen-image.*`; video → `gen-video.*`.
+2. Image → `gen-image.*`; **edit → `gen-edit.*`**; video → `gen-video.*`.
 3. Prefer **image-to-video** when user has / just generated a still of the subject.
-4. Always `-Open` unless user is headless / said not to.
-5. Never print API keys.
-6. Prefer workspace-relative paths in the reply (`images/…`, `videos/…`) plus HTTPS.
+4. Prefer **edit** over re-generate when user wants to change an existing image.
+5. Always `-Open` unless user is headless / said not to.
+6. Never print API keys.
+7. Prefer workspace-relative paths in the reply (`images/…`, `videos/…`) plus HTTPS.
 
 ## What this skill does not do
 
 - Native Grok media cards via shell
+- Multi-image edit (up to 3 refs) — single source only for now
 - Video edit / extension endpoints (unless you add scripts later)
 - Hard OS-level model filter

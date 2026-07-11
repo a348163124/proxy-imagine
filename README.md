@@ -1,83 +1,80 @@
 # proxy-imagine
 
-Agent skill: generate images via an **OpenAI-compatible mid-relay**
-(`POST /v1/images/generations`) instead of Grok’s built-in `image_gen`
-(which only talks to official xAI Imagine).
+Agent skill: generate **images and videos** via an OpenAI/xAI-compatible **mid-relay**
+instead of Grok’s built-in `image_gen` / `image_to_video` (official-only auth).
 
-- Default image model: `grok-imagine-image`
-- Soft gate: intended for **Grok-family / mid-relay** chat sessions; skip for Composer / non-Grok
-- After generate: agent **must** `read_file` the image + reply with a short relative link (`images/foo.jpg`) for in-session preview
-- No API keys in the repo — reads `GROK_API_KEY` (and optional `GROK_IMAGEN_*`) from the environment
+| Kind | Endpoint | Default model | Script |
+|------|----------|---------------|--------|
+| Image | `POST /v1/images/generations` | `grok-imagine-image` | `scripts/gen-image.ps1` / `.py` |
+| Video | `POST /v1/videos/generations` + poll `GET /v1/videos/{id}` | `grok-imagine-video` | `scripts/gen-video.ps1` / `.py` |
+
+- Soft gate: **Grok-family / mid-relay** chat; skip Composer / non-Grok
+- After generate: prefer `-Open`, HTTPS URL in reply, local relative path
+- No API keys in the repo — uses `GROK_API_KEY` (and optional `GROK_*` overrides)
 
 ## Layout
 
 ```text
 proxy-imagine/
-  SKILL.md              # agent instructions + frontmatter
+  SKILL.md
   scripts/
-    gen-image.ps1       # Windows / PowerShell
-    gen-image.py        # cross-platform
-  .env.example
+    gen-image.ps1 / gen-image.py
+    gen-video.ps1 / gen-video.py
   README.md
 ```
 
-## Install with `npx skills`
-
-The [skills CLI](https://skills.sh/) installs from **Git** (usually GitHub), not from an npm package name alone.
-
-### After you push this repo to GitHub
+## Install
 
 ```bash
-# Whole repo (SKILL.md at repo root)
-npx skills add <your-github-user>/proxy-imagine
-
-# Global (user-level) + non-interactive
-npx skills add <your-github-user>/proxy-imagine -g -y
-
-# Full URL
-npx skills add https://github.com/<your-github-user>/proxy-imagine
-```
-
-If you later nest the skill under `skills/proxy-imagine/`:
-
-```bash
-npx skills add https://github.com/<user>/<repo>/tree/main/skills/proxy-imagine
+npx skills add a348163124/proxy-imagine -g -y
 # or
-npx skills add <user>/<repo>@proxy-imagine
+npx skills add https://github.com/a348163124/proxy-imagine -g -y
 ```
 
-### Local path (no GitHub yet)
-
-```bash
-# From a clone / this folder
-npx skills add ./proxy-imagine
-# or absolute path
-npx skills add "C:/Users/you/.grok/skills/proxy-imagine"
-```
-
-Install target depends on the agent (e.g. `~/.agents/skills/`, `~/.grok/skills/`, project `.agents/skills/`). Grok also discovers skills under `~/.grok/skills/` and `~/.agents/skills/`.
-
-## Manual use (without the agent)
+## Image
 
 ```powershell
-# PowerShell
-.\scripts\gen-image.ps1 -Prompt "a quiet harbor at dusk" -OutDir images -Name harbor-dusk -Json
+.\scripts\gen-image.ps1 -Prompt "a red lantern watercolor" -OutDir images -Name lantern -Open -Json
 ```
 
 ```bash
-python scripts/gen-image.py "a quiet harbor at dusk" --out-dir images --name harbor-dusk --json
+python scripts/gen-image.py "a red lantern watercolor" --out-dir images --name lantern --open --json
 ```
+
+## Video
+
+Text-to-video:
+
+```powershell
+.\scripts\gen-video.ps1 -Prompt "cat on windowsill at sunset, soft fur motion" -Duration 6 -OutDir videos -Name cat -Open -Json
+```
+
+Image-to-video (recommended when you have a still):
+
+```powershell
+.\scripts\gen-video.ps1 `
+  -Prompt "gentle breeze, subtle blink" `
+  -ImagePath .\images\sunset-cat.jpg `
+  -Duration 6 -OutDir videos -Name cat-motion -Open -Json
+```
+
+```bash
+python scripts/gen-video.py "gentle breeze, subtle blink" \
+  --image-path images/sunset-cat.jpg --duration 6 --out-dir videos --name cat-motion --open --json
+```
+
+**Note:** Duration is often **6 or 10** seconds on the backend. Requests for 3s may stay `pending`.
 
 ## Environment
 
 | Variable | Purpose |
 |----------|---------|
-| `GROK_API_KEY` | Bearer token for the proxy (also tries `THIRD_PARTY_API_KEY`, …) |
-| `GROK_IMAGEN_BASE_URL` | Override proxy host (default: `ANTHROPIC_BASE_URL` or `https://codexone.aieania.tech`) |
-| `GROK_IMAGEN_MODEL` | Image model id (default: `grok-imagine-image`) |
-| `GROK_IMAGEN_API_KEY` | Optional separate key for images only |
-| `GROK_IMAGEN_OUT_DIR` | Default output directory |
+| `GROK_API_KEY` | Bearer token |
+| `GROK_IMAGEN_BASE_URL` / `GROK_VIDEO_BASE_URL` | Proxy host |
+| `GROK_IMAGEN_MODEL` | Image model (default `grok-imagine-image`) |
+| `GROK_VIDEO_MODEL` | Video model (default `grok-imagine-video`) |
+| `GROK_IMAGEN_OUT_DIR` / `GROK_VIDEO_OUT_DIR` | Output dirs |
 
 ## License
 
-MIT (or your choice — update this file when publishing).
+MIT (or your choice when publishing).

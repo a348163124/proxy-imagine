@@ -1,69 +1,40 @@
 ---
 name: proxy-imagine
 description: >
-  Proxy text-to-image for Grok mid-relay sessions only. Calls OpenAI-compatible
-  /v1/images/generations (default model grok-imagine-image) instead of built-in image_gen.
-  After generation: open OS viewer (-Open), reply with HTTPS image URL + markdown image embed
-  (TUI can click https links; relative paths alone do NOT show native Imagine media cards).
-  Use when the active chat model is Grok-family (custom-grok, grok-4.5, grok-build, grok-4*,
-  or any [model.*] pointing at a non-xAI base_url) AND the user wants generate/draw/create
-  an image, illustration, poster, scene; image_gen fails with incorrect API key; /proxy-imagine;
-  出图/画图/生成图片/插图. Do NOT use when the session model is Composer, Cursor composer,
-  or other non-Grok models — use built-in image_gen there instead.
+  Proxy media for Grok mid-relay sessions: text-to-image (/images/generations) and
+  text/image-to-video (/videos/generations async poll). Defaults: grok-imagine-image /
+  grok-imagine-video. After success: -Open, HTTPS url in reply, local relative path.
+  Use when Grok-family mid-relay chat needs generate/draw image, video, 出图/画图/生成视频/短视频;
+  official image_gen/image_to_video API key errors; /proxy-imagine.
+  Do NOT use for Composer/non-Grok — use built-in tools there.
 when-to-use: >
-  Active model is Grok-family or custom-grok mid-relay; user asks to generate or draw an image;
-  official image_gen API key error on proxy setups; /proxy-imagine. Skip for composer-2.5,
-  grok-composer*, non-Grok providers, or when user explicitly wants official xAI Imagine.
+  Grok mid-relay session; user wants image or short video; official Imagine tools fail
+  with incorrect API key; /proxy-imagine. Skip composer and non-Grok models.
 ---
 
-# Proxy Imagine
+# Proxy Imagine (image + video)
 
-Route image generation through the user's **proxy API**, not Grok's built-in `image_gen`.
-
-## Important: display limits
-
-Built-in `image_gen` returns a **native media attachment** that Grok Build renders as an
-in-window image card. Shell scripts **cannot** inject that channel.
-
-| What works | What does **not** work |
-|------------|-------------------------|
-| `https://...` URL in the reply (Ctrl/Cmd+click often opens) | Bare `images/foo.jpg` markdown as if it were Imagine media |
-| Markdown image `![](https://...)` when TUI renders remote images | Expecting shell output alone to show a media bubble |
-| `-Open` / OS default viewer | `file://` / relative links always opening inside Grok |
-| Local file on disk under `images/` | 100% parity with native Imagine UI |
-
-**Do not promise native Imagine cards.** Maximize: remote HTTPS + OS open + local path.
+Generate **images and videos** through the user's mid-relay API — not Grok's built-in
+`image_gen` / `image_to_video` (those hit official xAI and need `XAI_API_KEY`).
 
 ## Session gate (soft)
 
-**Use only when BOTH are true:**
+**Use when BOTH are true:**
 
 1. Chat model is Grok-family / mid-relay (`custom-grok`, `grok-4.5`, `grok-build*`, …).
-2. User wants an image, **or** ran `/proxy-imagine`.
+2. User wants an **image** or **video**, or ran `/proxy-imagine`.
 
-**Skip** for Composer / non-Grok → use built-in `image_gen`.
+**Skip** for Composer / non-Grok → built-in tools.
 
-## Hard rules (when gate passes)
+## Display limits (honest)
 
-1. **Do not** call built-in `image_gen` / `image_edit` (unless user insists on official).
-2. Run the script with **`-OutDir "images"`** and **`-Open`** (Windows: opens default viewer).
-3. Parse JSON: use `url`, `relative_path`, `file_uri`, `path`.
-4. **`read_file` the local image** once (for model vision / verification).
-5. **Final reply MUST include all of:**
-   - Markdown remote image (if `url` present): `![](<url>)`
-   - Clickable HTTPS link: `[在浏览器打开](<url>)`
-   - Local relative path as text backup: `` `images/<name>.jpg` ``
-   - One-line description
-6. Never print API keys.
+Shell cannot inject native Imagine media bubbles. Maximize UX with:
 
-## Default endpoint
-
-| Setting | Resolution |
-|---------|------------|
-| Base URL | `GROK_IMAGEN_BASE_URL` → `PROXY_IMAGEN_BASE_URL` → `https://codexone.aieania.tech` |
-| API key | `GROK_IMAGEN_API_KEY` → `PROXY_IMAGEN_API_KEY` → `GROK_API_KEY` → `XAI_API_KEY` |
-| Model | `GROK_IMAGEN_MODEL` → `PROXY_IMAGEN_MODEL` → `grok-imagine-image` |
-| Output | workspace `./images` |
+| Do | Don't rely on |
+|----|----------------|
+| `-Open` (OS viewer / player) | Bare `images/foo.jpg` as native card |
+| HTTPS `url` in reply + markdown link | 100% parity with built-in Imagine UI |
+| Local file under `images/` or `videos/` | |
 
 ## Resolve skill root
 
@@ -76,62 +47,133 @@ $skillRoot = @(
 ) | Where-Object { Test-Path (Join-Path $_ "scripts\gen-image.ps1") } | Select-Object -First 1
 ```
 
-## Generate (Windows PowerShell)
+---
+
+## A) Image generation
+
+**Script:** `scripts/gen-image.ps1` / `gen-image.py`  
+**API:** `POST {base}/v1/images/generations`  
+**Default model:** `grok-imagine-image`
 
 ```powershell
 & "$skillRoot\scripts\gen-image.ps1" `
-  -Prompt "<full visual prompt>" `
+  -Prompt "<visual prompt>" `
   -OutDir "images" `
-  -Name "<short-kebab-name>" `
-  -Open `
-  -Json
+  -Name "<kebab-name>" `
+  -Open -Json
+```
+
+```bash
+python "$SKILL_ROOT/scripts/gen-image.py" "<prompt>" --out-dir images --name <kebab> --open --json
+```
+
+Env: `GROK_API_KEY`, optional `GROK_IMAGEN_BASE_URL`, `GROK_IMAGEN_MODEL`, `GROK_IMAGEN_OUT_DIR`.
+
+**After image:**
+
+1. `read_file` local image (optional vision check).
+2. Reply with HTTPS image URL (if present) + `` `images/<name>.jpg` ``.
+
+---
+
+## B) Video generation
+
+**Script:** `scripts/gen-video.ps1` / `gen-video.py`  
+**API:**
+
+1. `POST {base}/v1/videos/generations` → `{ "request_id": "..." }`
+2. Poll `GET {base}/v1/videos/{request_id}` until `status` is `done` (or url present)
+3. Download `video.url` → local `.mp4`
+
+**Default model:** `grok-imagine-video`  
+**Default duration:** `6` (API often supports 6/10; **3 may stay pending** — prefer 6 unless user insists)
+
+### Text-to-video
+
+```powershell
+& "$skillRoot\scripts\gen-video.ps1" `
+  -Prompt "<motion prompt, present tense, simple action>" `
+  -Duration 6 `
+  -OutDir "videos" `
+  -Name "<kebab-name>" `
+  -Open -Json
+```
+
+### Image-to-video (preferred when a still already exists)
+
+```powershell
+& "$skillRoot\scripts\gen-video.ps1" `
+  -Prompt "gentle breeze, soft blink, subtle fur motion" `
+  -ImagePath "images/sunset-cat.jpg" `
+  -Duration 6 `
+  -OutDir "videos" `
+  -Name "sunset-cat-motion" `
+  -Open -Json
+```
+
+Or public still:
+
+```powershell
+-ImageUrl "https://imgen.x.ai/..."
 ```
 
 Python:
 
 ```bash
-python "$SKILL_ROOT/scripts/gen-image.py" \
-  "<prompt>" --out-dir images --name "<short-kebab-name>" --open --json
+python "$SKILL_ROOT/scripts/gen-video.py" "<prompt>" \
+  --duration 6 --out-dir videos --name <kebab> \
+  --image-path images/foo.jpg --open --json
 ```
 
-JSON fields: `url`, `relative_path`, `file_uri`, `path`, `bytes`, `model`, `opened`.
+Env:
 
-## Prompt craft
+| Variable | Purpose |
+|----------|---------|
+| `GROK_API_KEY` | Auth (shared with image) |
+| `GROK_VIDEO_BASE_URL` | Override host (else same as image base) |
+| `GROK_VIDEO_MODEL` | Default `grok-imagine-video` (alt: `grok-imagine-video-1.5`) |
+| `GROK_VIDEO_OUT_DIR` | Default `./videos` |
+| `GROK_VIDEO_API_KEY` | Optional separate key |
 
-2–5 sentences: subject → setting → style → composition → lighting/mood.
+**Video prompt craft:** one clear motion in present tense; avoid multi-action clutter.  
+If animating a still, describe **only** motion/camera, keep subject fixed.
 
-## Workflow
+**After video:**
 
-1. Pass session gate.
-2. Craft prompt; pick kebab `Name`.
-3. Run script with `-Open -Json -OutDir images`.
-4. Confirm `ok` and `bytes` > 0.
-5. `read_file` local `images/<name>.jpg` (or absolute `path`).
-6. Reply in this shape:
+1. Confirm `ok` and `bytes` > 0.
+2. Reply shape:
 
 ```markdown
-![](HTTPS_URL_FROM_JSON)
+[在浏览器打开视频](HTTPS_VIDEO_URL)
 
-[在浏览器打开原图](HTTPS_URL_FROM_JSON)
+本地：`videos/<name>.mp4`（已尝试系统播放器打开，时长约 N 秒）
 
-本地文件：`images/<name>.jpg`（已尝试用系统看图打开）
-
-<一句画面描述>
+<一句描述>
 ```
 
-If `url` is missing (b64-only response), open local file with `-Open` and give absolute `path` + `file_uri`.
+3. Do **not** call built-in `image_to_video` on mid-relay (API key fails).
 
-## Failure handling
+**Failures:**
 
 | Symptom | Action |
 |---------|--------|
-| Non-Grok session | Use `image_gen` |
-| No API key | Ask for `GROK_API_KEY` |
-| HTTP errors | Report; check `GROK_IMAGEN_BASE_URL` |
-| User says “no display / link dead” | Re-run with `-Open`; paste fresh `url`; open local path with `Start-Process` / `open` |
+| `service_unavailable` / overloaded | Retry once after 30–60s |
+| Timeout pending | Report `request_id`; try duration 6 + image-to-video |
+| duration=3 stuck | Use 6; mention API may not honor 3 |
 
-## What this skill cannot do
+---
 
-- Inject native Grok Imagine media bubbles via shell
-- Hard-filter by model id at OS level
-- Video / reference edit unless proxy adds APIs
+## Hard rules
+
+1. Mid-relay Grok only for this skill.
+2. Image → `gen-image.*`; video → `gen-video.*`.
+3. Prefer **image-to-video** when user has / just generated a still of the subject.
+4. Always `-Open` unless user is headless / said not to.
+5. Never print API keys.
+6. Prefer workspace-relative paths in the reply (`images/…`, `videos/…`) plus HTTPS.
+
+## What this skill does not do
+
+- Native Grok media cards via shell
+- Video edit / extension endpoints (unless you add scripts later)
+- Hard OS-level model filter

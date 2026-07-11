@@ -47,6 +47,7 @@ def main() -> int:
     p.add_argument("--api-key", default="", help="API key (else env)")
     p.add_argument("--timeout", type=int, default=180)
     p.add_argument("--json", action="store_true", help="Print JSON result")
+    p.add_argument("--open", action="store_true", help="Open image in OS default viewer")
     args = p.parse_args()
 
     base_url = args.base_url or env_first(
@@ -113,19 +114,48 @@ def main() -> int:
         print(f"error: unexpected response: {json.dumps(payload)[:500]}", file=sys.stderr)
         return 1
 
+    full = out_path.resolve()
+    try:
+        rel = full.relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        rel = full.as_posix()
+    file_uri = full.as_uri()
+
+    opened = False
+    if args.open:
+        try:
+            import subprocess
+            import sys as _sys
+
+            if _sys.platform == "darwin":
+                subprocess.run(["open", str(full)], check=False)
+            elif _sys.platform.startswith("win"):
+                os.startfile(str(full))  # type: ignore[attr-defined]
+            else:
+                subprocess.run(["xdg-open", str(full)], check=False)
+            opened = True
+        except Exception as e:  # noqa: BLE001
+            print(f"warning: open failed: {e}", file=sys.stderr)
+
     result = {
         "ok": True,
-        "path": str(out_path),
+        "path": str(full),
+        "relative_path": rel,
+        "file_uri": file_uri,
         "url": item.get("url"),
         "model": model,
         "endpoint": endpoint,
-        "bytes": out_path.stat().st_size,
+        "bytes": full.stat().st_size,
         "mime": mime,
+        "opened": opened,
     }
     if args.json:
         print(json.dumps(result, ensure_ascii=False))
     else:
-        print(str(out_path))
+        if item.get("url"):
+            print(f"URL: {item['url']}")
+        print(f"FILE: {file_uri}")
+        print(f"PATH: {rel}")
     return 0
 
 

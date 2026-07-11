@@ -16,7 +16,8 @@ param(
   [string]$BaseUrl = "",
   [string]$ApiKey = "",
   [int]$TimeoutSec = 180,
-  [switch]$Json
+  [switch]$Json,
+  [switch]$Open
 )
 
 $ErrorActionPreference = "Stop"
@@ -121,18 +122,40 @@ if ($item.url) {
   throw "Response has neither url nor b64_json"
 }
 
+# Workspace-relative path (forward slashes) for agent replies
+$cwd = (Get-Location).Path
+$rel = $outPath
+if ($outPath.StartsWith($cwd, [System.StringComparison]::OrdinalIgnoreCase)) {
+  $rel = $outPath.Substring($cwd.Length).TrimStart('\', '/')
+}
+$rel = ($rel -replace '\\', '/')
+
+# file:// URI works in some terminals / browsers
+$full = (Resolve-Path $outPath).Path
+$fileUri = "file:///" + ($full -replace '\\', '/')
+
+if ($Open) {
+  try { Start-Process -FilePath $full } catch { Write-Warning "Open failed: $_" }
+}
+
 $result = [ordered]@{
-  ok       = $true
-  path     = $outPath
-  url      = $item.url
-  model    = $Model
-  endpoint = $endpoint
-  bytes    = (Get-Item $outPath).Length
-  mime     = $mime
+  ok            = $true
+  path          = $full
+  relative_path = $rel
+  file_uri      = $fileUri
+  url           = $item.url
+  model         = $Model
+  endpoint      = $endpoint
+  bytes         = (Get-Item $outPath).Length
+  mime          = $mime
+  opened        = [bool]$Open
 }
 
 if ($Json) {
   $result | ConvertTo-Json -Compress
 } else {
-  Write-Output $outPath
+  # Human-friendly multi-line so TUI can pick up https:// and file://
+  if ($item.url) { Write-Output "URL: $($item.url)" }
+  Write-Output "FILE: $fileUri"
+  Write-Output "PATH: $rel"
 }

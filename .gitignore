@@ -1,0 +1,18 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Local secrets (never commit keys)
+.env
+.env.*
+!.env.example
+
+# Generated smoke images (if any land in the skill tree)
+*.jpg
+*.jpeg
+*.png
+*.webp
+images/
